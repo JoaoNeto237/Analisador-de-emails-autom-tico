@@ -31,19 +31,27 @@ Certifique-se de ter o Python 3.8 ou superior instalado.
 Bash
 
 git clone https://github.com/JoaoNeto237/Analisador-de-emails.git
-cd analisador-de-emails
-
+cd Analisador-de-emails
 2. Configurar o Ambiente Virtual
+Crie e ative um ambiente virtual para isolar as dependências do projeto.
 
-# Criar o ambiente virtual
+Criar o ambiente virtual
+
+Bash
+
 python -m venv venv
+Ativar o ambiente virtual
 
-# Ativar o ambiente virtual
-# No Windows
+No Windows
+
+Bash
+
 venv\Scripts\activate
-# No macOS ou Linux
-source venv/bin/activat
+No macOS ou Linux
 
+Bash
+
+source venv/bin/activate
 3. Instalar as Dependências
 As bibliotecas necessárias estão listadas no arquivo requirements.txt.
 
@@ -56,6 +64,3 @@ Inicie o servidor Flask na pasta raiz do projeto.
 Bash
 
 python app.py
-
-📞 Contato
-Para dúvidas ou sugestões, entre em contato através do meu perfil no GitHub.
