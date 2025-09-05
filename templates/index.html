@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Analisador de Emails</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+    <header class="header">
+        <h1>Sistema Inteligente de Classificação e Resposta Automática de Emails</h1>
+        
+    </header>
+
+    <main class="container">
+        <section class="email-input-section">
+            <h2 class="section-title">Entrada de Email</h2>
+            <div class="input-tabs">
+                <button type="button" class="tab active" data-tab="file-upload">Upload de Arquivo</button>
+                <button type="button" class="tab" data-tab="text-direct">Texto Direto</button>
+            </div>
+            
+            <form id="email-form" enctype="multipart/form-data">
+                <div id="file-upload" class="tab-content active">
+                    <div class="drop-area" id="drop-area">
+                        <input type="file" id="file-input" name="file" accept=".txt,.pdf" hidden>
+                        <p>Arraste e solte o arquivo aqui</p>
+                        <p>ou</p>
+                        <button type="button" class="upload-button" onclick="document.getElementById('file-input').click()">Selecione o Arquivo</button>
+                    </div>
+                </div>
+                
+                <div id="text-direct" class="tab-content">
+                    <textarea id="email-text" name="email_text" placeholder="Cole o conteúdo do e-mail aqui..."></textarea>
+                </div>
+
+                <button type="submit" id="analyze-button">Analisar E-mail</button>
+            </form>
+        </section>
+
+        <section class="results-section" id="results" style="display: none;">
+            <h2 class="section-title">Resultados da Análise</h2>
+            <div id="loading-indicator">Processando...</div>
+            <div class="result-details">
+                <p><strong>Categoria:</strong> <span id="category"></span></p>
+                <p><strong>Tipo:</strong> <span id="email_type"></span></p>
+                <p><strong>Prioridade:</strong> <span id="priority"></span></p>
+                <p><strong>Tempo de Processamento:</strong> <span id="processing_time"></span></p>
+                <div class="response-box">
+                    <h3>Resposta Sugerida</h3>
+                    <p><strong>Assunto:</strong> <span id="response_subject"></span></p>
+                    <pre><span id="response_body"></span></pre>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    <script src="{{ url_for('static', filename='js/drag_drop.js') }}"></script>
+</body>
+</html>
