@@ -26,7 +26,6 @@ document.addEventListener('DOMContentLoaded', () => {
         const files = dt.files;
         if (files.length > 0) {
             fileInput.files = files;
-            // Se precisar, você pode mostrar o nome do arquivo aqui
             alert(`Arquivo selecionado: ${files[0].name}`);
         }
     }

@@ -20,10 +20,8 @@ logger = logging.getLogger(__name__)
 
 class HybridEmailClassifier:
     def __init__(self):
-        # Token do Hugging Face (opcional - sem token tem rate limit menor)
         self.hf_token = os.environ.get('HF_TOKEN', None)
         
-        # APIs do Hugging Face - GRATUITAS
         self.hf_sentiment_api = "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest"
         self.hf_classification_api = "https://api-inference.huggingface.co/models/neuralmind/bert-base-portuguese-cased"
         
@@ -358,7 +356,6 @@ class HybridEmailClassifier:
             reasoning = f"Ambos sistemas concordaram. Sentimento detectado: {hf_result.get('sentiment', {}).get('label', 'N/A')}"
             
         else:
-            # Se discordam, priorizar baseado na confiança
             max_rules_score = max(rules_scores.values()) if rules_scores else 0
             
             if max_rules_score >= 10:
@@ -391,13 +388,10 @@ class HybridEmailClassifier:
 
     def classify_email(self, text):
         """Método principal - sistema híbrido"""
-        # Classificação por regras
         rules_result = self.classify_with_rules(text)
         
-        # Classificação por IA (Hugging Face API)
         hf_result = self.classify_with_huggingface(text)
         
-        # Combinar resultados
         final_result = self.combine_classifications(rules_result, hf_result)
         
         logger.info(f"Classificação híbrida: {final_result['category']} - {final_result['method']}")

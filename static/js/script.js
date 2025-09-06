@@ -354,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Atalhos de teclado
     document.addEventListener('keydown', (e) => {
-        // Ctrl/Cmd + Enter para analisar
+      
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
             if (!analyzeButton.disabled) {
@@ -362,7 +362,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
         
-        // ESC para limpar resultados
         if (e.key === 'Escape') {
             hideResults();
             const errorElement = document.getElementById('error-message');
@@ -429,7 +428,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Inicialização
     console.log('Sistema de classificação de emails inicializado com sucesso!');
     
-    // Verificar se há exemplos na URL (para demonstração)
+    // Verificar se há exemplos na URL
     const urlParams = new URLSearchParams(window.location.search);
     const exemplo = urlParams.get('exemplo');
     
