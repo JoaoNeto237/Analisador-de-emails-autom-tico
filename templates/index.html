@@ -3,58 +3,198 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Analisador de Emails</title>
+    <title>Classificador Inteligente de Emails</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
 <body>
-
     <header class="header">
-        <h1>Sistema Inteligente de Classificação e Resposta Automática de Emails</h1>
-        
+        <div class="header-content">
+            <i class="fas fa-robot"></i>
+            <h1>Sistema Inteligente de Classificação de Emails</h1>
+            <p>Automatize a análise e resposta de emails com Inteligência Artificial</p>
+        </div>
     </header>
 
     <main class="container">
+        <!-- Seção de Input -->
         <section class="email-input-section">
-            <h2 class="section-title">Entrada de Email</h2>
+            <h2 class="section-title">
+                <i class="fas fa-envelope-open-text"></i>
+                Entrada de Email
+            </h2>
+            
             <div class="input-tabs">
-                <button type="button" class="tab active" data-tab="file-upload">Upload de Arquivo</button>
-                <button type="button" class="tab" data-tab="text-direct">Texto Direto</button>
+                <button type="button" class="tab active" data-tab="file-upload">
+                    <i class="fas fa-file-upload"></i>
+                    Upload de Arquivo
+                </button>
+                <button type="button" class="tab" data-tab="text-direct">
+                    <i class="fas fa-keyboard"></i>
+                    Texto Direto
+                </button>
             </div>
             
             <form id="email-form" enctype="multipart/form-data">
+                <!-- Tab Upload -->
                 <div id="file-upload" class="tab-content active">
                     <div class="drop-area" id="drop-area">
                         <input type="file" id="file-input" name="file" accept=".txt,.pdf" hidden>
-                        <p>Arraste e solte o arquivo aqui</p>
-                        <p>ou</p>
-                        <button type="button" class="upload-button" onclick="document.getElementById('file-input').click()">Selecione o Arquivo</button>
+                        <div class="drop-content">
+                            <i class="fas fa-cloud-upload-alt"></i>
+                            <p>Arraste e solte o arquivo aqui</p>
+                            <span class="divider">ou</span>
+                            <button type="button" class="upload-button" onclick="document.getElementById('file-input').click()">
+                                <i class="fas fa-folder-open"></i>
+                                Selecionar Arquivo
+                            </button>
+                            <small>Formatos aceitos: .txt, .pdf (máx. 16MB)</small>
+                        </div>
+                        <div class="file-info" id="file-info" style="display: none;">
+                            <i class="fas fa-file-alt"></i>
+                            <span id="file-name"></span>
+                            <button type="button" id="remove-file" class="remove-btn">
+                                <i class="fas fa-times"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
+                <!-- Tab Texto Direto -->
                 <div id="text-direct" class="tab-content">
-                    <textarea id="email-text" name="email_text" placeholder="Cole o conteúdo do e-mail aqui..."></textarea>
+                    <div class="text-input-container">
+                        <textarea id="email-text" name="email_text" placeholder="Cole ou digite o conteúdo do e-mail aqui...
+                        
+Exemplo:
+Olá, gostaria de saber o status da minha solicitação de protocolo #12345. Já faz uma semana desde que enviei os documentos e não recebi nenhuma atualização. Podem me informar quando terei uma resposta?
+
+Obrigado."></textarea>
+                        <div class="char-counter">
+                            <span id="char-count">0</span> caracteres
+                        </div>
+                    </div>
                 </div>
 
-                <button type="submit" id="analyze-button">Analisar E-mail</button>
+                <button type="submit" id="analyze-button" class="analyze-btn">
+                    <i class="fas fa-cogs"></i>
+                    <span class="btn-text">Analisar E-mail</span>
+                    <span class="btn-loading" style="display: none;">
+                        <i class="fas fa-spinner fa-spin"></i>
+                        Processando...
+                    </span>
+                </button>
             </form>
         </section>
 
+        <!-- Seção de Resultados -->
         <section class="results-section" id="results" style="display: none;">
-            <h2 class="section-title">Resultados da Análise</h2>
-            <div id="loading-indicator">Processando...</div>
-            <div class="result-details">
-                <p><strong>Categoria:</strong> <span id="category"></span></p>
-                <p><strong>Tipo:</strong> <span id="email_type"></span></p>
-                <p><strong>Prioridade:</strong> <span id="priority"></span></p>
-                <p><strong>Tempo de Processamento:</strong> <span id="processing_time"></span></p>
-                <div class="response-box">
+            <h2 class="section-title">
+                <i class="fas fa-chart-line"></i>
+                Resultados da Análise
+            </h2>
+            
+            <div class="results-grid">
+                <!-- Card Classificação -->
+                <div class="result-card">
+                    <div class="card-header">
+                        <i class="fas fa-tags"></i>
+                        <h3>Classificação</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="category-badge" id="category-badge">
+                            <span id="category"></span>
+                        </div>
+                        <div class="details">
+                            <p><strong>Tipo:</strong> <span id="email_type"></span></p>
+                            <p><strong>Prioridade:</strong> <span id="priority-badge"></span></p>
+                            <p><strong>Confiança:</strong> <span id="confidence"></span></p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card Métricas -->
+                <div class="result-card">
+                    <div class="card-header">
+                        <i class="fas fa-tachometer-alt"></i>
+                        <h3>Métricas</h3>
+                    </div>
+                    <div class="card-content">
+                        <div class="metrics">
+                            <div class="metric">
+                                <span class="metric-label">Tempo:</span>
+                                <span class="metric-value" id="processing_time"></span>
+                            </div>
+                            <div class="metric">
+                                <span class="metric-label">Palavras:</span>
+                                <span class="metric-value" id="word_count"></span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Resposta Sugerida -->
+            <div class="response-container">
+                <div class="response-header">
+                    <i class="fas fa-reply"></i>
                     <h3>Resposta Sugerida</h3>
-                    <p><strong>Assunto:</strong> <span id="response_subject"></span></p>
-                    <pre><span id="response_body"></span></pre>
+                    <button id="copy-response" class="copy-btn" title="Copiar resposta">
+                        <i class="fas fa-copy"></i>
+                    </button>
+                </div>
+                <div class="response-content">
+                    <div class="response-subject">
+                        <strong>Assunto:</strong> <span id="response_subject"></span>
+                    </div>
+                    <div class="response-body">
+                        <pre id="response_body"></pre>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Seção de Exemplos -->
+        <section class="examples-section">
+            <h2 class="section-title">
+                <i class="fas fa-lightbulb"></i>
+                Exemplos de Classificação
+            </h2>
+            <div class="examples-grid">
+                <div class="example-card produtivo">
+                    <div class="example-header">
+                        <span class="example-badge produtivo">Produtivo</span>
+                        <h4>Solicitação de Status</h4>
+                    </div>
+                    <p>"Gostaria de saber o andamento do protocolo #12345. Já faz uma semana e não recebi retorno."</p>
+                </div>
+                <div class="example-card produtivo">
+                    <div class="example-header">
+                        <span class="example-badge produtivo">Produtivo</span>
+                        <h4>Suporte Técnico</h4>
+                    </div>
+                    <p>"Estou com problema para acessar o sistema. Aparece erro de login e não consigo entrar."</p>
+                </div>
+                <div class="example-card improdutivo">
+                    <div class="example-header">
+                        <span class="example-badge improdutivo">Improdutivo</span>
+                        <h4>Felicitações</h4>
+                    </div>
+                    <p>"Feliz Natal! Desejo um ano novo cheio de prosperidade para toda a equipe."</p>
+                </div>
+                <div class="example-card improdutivo">
+                    <div class="example-header">
+                        <span class="example-badge improdutivo">Improdutivo</span>
+                        <h4>Agradecimento</h4>
+                    </div>
+                    <p>"Muito obrigado pela atenção e pelo excelente atendimento recebido."</p>
                 </div>
             </div>
         </section>
     </main>
+
+    <footer class="footer">
+        <p>&copy; 2025 Sistema de Classificação de Emails - Desenvolvido por João Cunha</p>
+    </footer>
 
     <script src="{{ url_for('static', filename='js/script.js') }}"></script>
     <script src="{{ url_for('static', filename='js/drag_drop.js') }}"></script>
