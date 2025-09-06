@@ -1,15 +1,52 @@
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Ambiente virtual
+# Virtual Environment
 venv/
-.venv/
+env/
+ENV/
+.venv
 
-# Arquivos de upload
+# Environment Variables
+.env
+
+# Flask
+instance/
+
+# Uploads
 uploads/
 
-# Logs e outros
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
 *.log
+
+# Vercel
+.vercel

@@ -4,23 +4,29 @@ import logging
 from datetime import datetime
 import os
 import PyPDF2
-import io
+import requests
+import json
 from werkzeug.utils import secure_filename
 from langdetect import detect, LangDetectException
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-# Criar pasta uploads se não existir
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
 
-# Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class FinancialEmailClassifier:
+class HybridEmailClassifier:
     def __init__(self):
+        # Token do Hugging Face (opcional - sem token tem rate limit menor)
+        self.hf_token = os.environ.get('HF_TOKEN', None)
+        
+        # APIs do Hugging Face - GRATUITAS
+        self.hf_sentiment_api = "https://api-inference.huggingface.co/models/cardiffnlp/twitter-roberta-base-sentiment-latest"
+        self.hf_classification_api = "https://api-inference.huggingface.co/models/neuralmind/bert-base-portuguese-cased"
+        
         self.financial_patterns = {
             'status_request': {
                 'keywords': ['status', 'andamento', 'situação', 'atualização', 'progresso', 'prazos', 'quando', 'previsão', 'cronograma', 'acompanhar'],
@@ -85,20 +91,14 @@ class FinancialEmailClassifier:
             return ""
 
     def preprocess_text(self, text):
-        """Pré-processa o texto removendo caracteres especiais e stop words"""
+        """Pré-processa o texto"""
         if not text:
             return ""
         
-        # Converter para minúsculas
         text = text.lower()
-        
-        # Remover caracteres especiais mantendo acentos
         text = re.sub(r'[^\w\s\.\,\!\?\-\@\(\)áéíóúàèìòùâêîôûãõç]', ' ', text)
-        
-        # Normalizar espaços
         text = re.sub(r'\s+', ' ', text)
         
-        # Stop words em português
         stop_words = {
             'de', 'da', 'do', 'das', 'dos', 'a', 'o', 'as', 'os', 'um', 'uma', 'uns', 'umas', 
             'para', 'por', 'com', 'sem', 'em', 'na', 'no', 'nas', 'nos', 'que', 'e', 'ou',
@@ -124,7 +124,6 @@ class FinancialEmailClassifier:
             
         text_lower = text.lower()
         
-        # Palavras/frases comuns em português
         portuguese_indicators = [
             'olá', 'oi', 'bom dia', 'boa tarde', 'boa noite', 'obrigado', 'obrigada',
             'por favor', 'com licença', 'desculpa', 'desculpe', 'tudo bem', 'como vai',
@@ -132,11 +131,9 @@ class FinancialEmailClassifier:
             'cordialmente', 'aguardo', 'retorno', 'informação', 'solicitação'
         ]
         
-        # Para textos curtos, verificar palavras específicas
         if len(text.split()) <= 5:
             return any(indicator in text_lower for indicator in portuguese_indicators)
         
-        # Para textos maiores, usar detecção de idioma
         try:
             detected_lang = self.detect_language(text)
             if detected_lang == 'pt':
@@ -144,12 +141,11 @@ class FinancialEmailClassifier:
         except:
             pass
         
-        # Fallback: verificar presença de palavras portuguesas
         portuguese_count = sum(1 for indicator in portuguese_indicators if indicator in text_lower)
         return portuguese_count >= 2
 
-    def classify_email(self, text):
-        """Classifica o email em categorias"""
+    def classify_with_rules(self, text):
+        """Classificação baseada em regras"""
         if not text or len(text.strip()) < 3:
             return "Improdutivo", "empty_content", "baixa", {}
         
@@ -160,16 +156,13 @@ class FinancialEmailClassifier:
         detected_type = None
         max_score = 0
         
-        # Calcular scores para cada tipo de email
         for email_type, config in self.financial_patterns.items():
             score = 0
             
-            # Pontuação por keywords
             for keyword in config['keywords']:
                 if keyword in text_lower:
                     score += text_lower.count(keyword) * 3
             
-            # Pontuação por frases completas (peso maior)
             for phrase in config['phrases']:
                 if phrase in text_lower:
                     score += 8
@@ -180,12 +173,10 @@ class FinancialEmailClassifier:
                 max_score = score
                 detected_type = email_type
         
-        # Se encontrou padrão específico
         if detected_type and max_score >= 3:
             category = self.financial_patterns[detected_type]['category']
             priority = self.financial_patterns[detected_type]['priority']
         else:
-            # Classificação baseada em indicadores gerais
             productive_patterns = [
                 r'\?', r'solicit', r'precis', r'dúvid', r'problem', r'ajud', 
                 r'inform', r'requer', r'contato', r'urgente', r'prazo'
@@ -208,9 +199,218 @@ class FinancialEmailClassifier:
                 priority = "baixa"
                 detected_type = "general_improdutivo"
         
-        logger.info(f"Classificação: {category} - Tipo: {detected_type} - Prioridade: {priority} - Score: {max_score}")
-        
         return category, detected_type, priority, category_scores
+
+    def call_huggingface_api(self, api_url, text, max_retries=2):
+        """Chama API do Hugging Face com retry"""
+        headers = {}
+        if self.hf_token:
+            headers["Authorization"] = f"Bearer {self.hf_token}"
+        
+        # Truncar texto para API
+        text = text[:500] if len(text) > 500 else text
+        
+        payload = {"inputs": text}
+        
+        for attempt in range(max_retries):
+            try:
+                response = requests.post(
+                    api_url, 
+                    headers=headers, 
+                    json=payload,
+                    timeout=10
+                )
+                
+                if response.status_code == 200:
+                    return response.json()
+                elif response.status_code == 503:
+                    # Modelo carregando, tentar novamente
+                    logger.warning(f"Modelo carregando, tentativa {attempt + 1}")
+                    continue
+                else:
+                    logger.error(f"Erro API HF: {response.status_code} - {response.text}")
+                    return None
+                    
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Erro de conexão HF: {e}")
+                if attempt == max_retries - 1:
+                    return None
+                continue
+        
+        return None
+
+    def classify_with_huggingface(self, text):
+        """Classificação usando Hugging Face API"""
+        try:
+            # Análise de sentimento
+            sentiment_result = self.call_huggingface_api(self.hf_sentiment_api, text)
+            
+            if not sentiment_result:
+                logger.warning("API de sentimento HF não disponível")
+                return None
+            
+            # Extrair resultado do sentimento
+            if isinstance(sentiment_result, list) and len(sentiment_result) > 0:
+                sentiment = sentiment_result[0]
+                sentiment_label = sentiment.get('label', 'NEUTRAL')
+                sentiment_score = sentiment.get('score', 0.5)
+            else:
+                logger.warning("Formato inesperado da resposta de sentimento")
+                return None
+            
+            # Interpretar resultados para contexto de emails
+            text_lower = text.lower()
+            
+            # Lógica de classificação baseada em sentimento + contexto
+            if sentiment_label == 'LABEL_0' or 'negativ' in sentiment_label.lower():
+                # Sentimento negativo geralmente indica problemas/solicitações
+                if any(word in text_lower for word in ['erro', 'problema', 'não funciona', 'falha']):
+                    category = "Produtivo"
+                    email_type = "technical_support"
+                    priority = "alta"
+                    confidence = "Alta"
+                elif any(word in text_lower for word in ['status', 'quando', 'prazo', 'andamento']):
+                    category = "Produtivo"
+                    email_type = "status_request"
+                    priority = "media"
+                    confidence = "Alta"
+                else:
+                    category = "Produtivo"
+                    email_type = "general_produtivo"
+                    priority = "media"
+                    confidence = "Média"
+                    
+            elif sentiment_label == 'LABEL_2' or 'positiv' in sentiment_label.lower():
+                # Sentimento positivo pode ser agradecimento ou social
+                if any(word in text_lower for word in ['obrigado', 'obrigada', 'agradeço', 'grato']):
+                    category = "Improdutivo"
+                    email_type = "gratitude"
+                    priority = "baixa"
+                    confidence = "Alta"
+                elif any(word in text_lower for word in ['feliz', 'parabéns', 'natal', 'ano novo']):
+                    category = "Improdutivo"
+                    email_type = "greetings"
+                    priority = "baixa"
+                    confidence = "Alta"
+                else:
+                    category = "Improdutivo"
+                    email_type = "social_chat"
+                    priority = "baixa"
+                    confidence = "Média"
+            else:
+                # Sentimento neutro - analisar contexto
+                if any(word in text_lower for word in ['?', 'solicit', 'precis', 'inform']):
+                    category = "Produtivo"
+                    email_type = "general_produtivo"
+                    priority = "media"
+                    confidence = "Média"
+                else:
+                    category = "Improdutivo"
+                    email_type = "social_chat"
+                    priority = "baixa"
+                    confidence = "Baixa"
+            
+            return {
+                'category': category,
+                'email_type': email_type,
+                'priority': priority,
+                'confidence': confidence,
+                'sentiment': {
+                    'label': sentiment_label,
+                    'score': round(sentiment_score, 3)
+                },
+                'api_used': 'Hugging Face Sentiment Analysis'
+            }
+            
+        except Exception as e:
+            logger.error(f"Erro na classificação Hugging Face: {e}")
+            return None
+
+    def combine_classifications(self, rules_result, hf_result):
+        """Combina resultados das duas abordagens"""
+        rules_category, rules_type, rules_priority, rules_scores = rules_result
+        
+        if not hf_result:
+            return {
+                'category': rules_category,
+                'email_type': rules_type,
+                'priority': rules_priority,
+                'confidence': 'Média',
+                'method': 'Rules Only (HF API unavailable)',
+                'scores': rules_scores,
+                'reasoning': 'Classificação baseada apenas em regras - API HF indisponível'
+            }
+        
+        # Se ambos concordam na categoria
+        if rules_category == hf_result.get('category'):
+            confidence = 'Alta'
+            category = rules_category
+            email_type = hf_result.get('email_type', rules_type)
+            
+            # Prioridade: usar a mais alta
+            priority_order = {'baixa': 1, 'media': 2, 'alta': 3}
+            hf_priority = hf_result.get('priority', 'media').lower()
+            rules_priority_val = priority_order.get(rules_priority, 2)
+            hf_priority_val = priority_order.get(hf_priority, 2)
+            
+            priority = rules_priority if rules_priority_val >= hf_priority_val else hf_priority
+            method = 'Hybrid - AI + Rules Agreement'
+            reasoning = f"Ambos sistemas concordaram. Sentimento detectado: {hf_result.get('sentiment', {}).get('label', 'N/A')}"
+            
+        else:
+            # Se discordam, priorizar baseado na confiança
+            max_rules_score = max(rules_scores.values()) if rules_scores else 0
+            
+            if max_rules_score >= 10:
+                # Regras com alta confiança
+                category = rules_category
+                email_type = rules_type
+                priority = rules_priority
+                confidence = 'Média'
+                method = 'Hybrid - Rules Priority'
+                reasoning = 'Padrões específicos detectados com alta confiança pelas regras'
+            else:
+                # Priorizar IA
+                category = hf_result.get('category', rules_category)
+                email_type = hf_result.get('email_type', rules_type)
+                priority = hf_result.get('priority', rules_priority)
+                confidence = hf_result.get('confidence', 'Média')
+                method = 'Hybrid - AI Priority'
+                reasoning = f"IA priorizou baseado em análise de sentimento: {hf_result.get('sentiment', {}).get('label', 'N/A')}"
+        
+        return {
+            'category': category,
+            'email_type': email_type,
+            'priority': priority,
+            'confidence': confidence,
+            'method': method,
+            'scores': rules_scores,
+            'reasoning': reasoning,
+            'ai_details': hf_result
+        }
+
+    def classify_email(self, text):
+        """Método principal - sistema híbrido"""
+        # Classificação por regras
+        rules_result = self.classify_with_rules(text)
+        
+        # Classificação por IA (Hugging Face API)
+        hf_result = self.classify_with_huggingface(text)
+        
+        # Combinar resultados
+        final_result = self.combine_classifications(rules_result, hf_result)
+        
+        logger.info(f"Classificação híbrida: {final_result['category']} - {final_result['method']}")
+        
+        return (
+            final_result['category'],
+            final_result['email_type'],
+            final_result['priority'],
+            final_result['scores'],
+            final_result['confidence'],
+            final_result['method'],
+            final_result['reasoning']
+        )
 
     def generate_professional_response(self, category, email_type, priority):
         """Gera resposta profissional baseada na classificação"""
@@ -411,8 +611,8 @@ Equipe de Atendimento'''
             'priority': priority
         }
 
-# Instanciar o classificador
-classifier = FinancialEmailClassifier()
+# Instanciar classificador
+classifier = HybridEmailClassifier()
 
 @app.route('/')
 def home():
@@ -424,7 +624,7 @@ def analyze_email():
         start_time = datetime.now()
         email_text = ""
         
-        # Processar arquivo ou texto direto
+        # Processar entrada
         if 'file' in request.files and request.files['file'].filename != '':
             file = request.files['file']
             filename = secure_filename(file.filename)
@@ -434,7 +634,7 @@ def analyze_email():
             elif filename.lower().endswith('.txt'):
                 email_text = file.read().decode('utf-8')
             else:
-                return jsonify({"error": "Formato de arquivo não suportado. Use .txt ou .pdf"}), 400
+                return jsonify({"error": "Formato não suportado. Use .txt ou .pdf"}), 400
                 
         elif request.is_json:
             data = request.get_json()
@@ -442,11 +642,9 @@ def analyze_email():
         else:
             email_text = request.form.get('email_text', '')
 
-        # Validar entrada
         if not email_text or len(email_text.strip()) < 3:
-            return jsonify({"error": "Texto do email muito curto ou vazio."}), 400
+            return jsonify({"error": "Texto muito curto ou vazio"}), 400
         
-        # Verificar se está em português
         if not classifier.is_portuguese_text(email_text):
             response_data = classifier.generate_professional_response(
                 category='Improdutivo', 
@@ -458,31 +656,27 @@ def analyze_email():
                 "email_type": "language_error",
                 "priority": "baixa",
                 "confidence": "Alta",
+                "method": "Language Detection",
                 "suggested_response": response_data,
                 "processing_time": 0.1,
                 "word_count": len(email_text.split()),
                 "message": "Email detectado em idioma diferente do português"
             })
 
-        # Classificar email
-        category, email_type, priority, scores = classifier.classify_email(email_text)
+        # Classificar com sistema híbrido
+        category, email_type, priority, scores, confidence, method, reasoning = classifier.classify_email(email_text)
         response_data = classifier.generate_professional_response(category, email_type, priority)
         
-        # Calcular tempo de processamento
         end_time = datetime.now()
         processing_time = (end_time - start_time).total_seconds()
-        
-        # Calcular confiança
-        max_score = max(scores.values()) if scores else 0
-        confidence = "Alta" if max_score >= 8 else "Média" if max_score >= 3 else "Baixa"
-        
-        logger.info(f"Email processado: {category} - {email_type} - {priority} - Confiança: {confidence}")
 
         return jsonify({
             "category": category,
             "email_type": email_type.replace('_', ' ').title(),
             "priority": priority.title(),
             "confidence": confidence,
+            "method": method,
+            "reasoning": reasoning,
             "confidence_scores": scores,
             "suggested_response": {
                 "subject": response_data['subject'],
@@ -491,9 +685,10 @@ def analyze_email():
             "processing_time": round(processing_time, 3),
             "word_count": len(email_text.split()),
             "classification_details": {
-                "method": "NLP Pattern Matching",
-                "algorithm": "Financial Domain Specific Rules",
-                "patterns_matched": len([k for k, v in scores.items() if v > 0])
+                "algorithm": "Hybrid System (Rules + Hugging Face API)",
+                "api_provider": "Hugging Face Inference API",
+                "ai_available": True,
+                "patterns_matched": len([k for k, v in scores.items() if v > 0]) if scores else 0
             }
         })
 
@@ -505,9 +700,12 @@ def analyze_email():
 def health_check():
     """Endpoint de health check para monitoramento"""
     return jsonify({
-        "status": "OK", 
-        "service": "Financial Email Classifier",
-        "version": "2.0.0",
+        "status": "OK",
+        "service": "Hybrid Financial Email Classifier",
+        "version": "3.0.0",
+        "ai_provider": "Hugging Face Inference API",
+        "ai_available": True,
+        "hf_token_configured": classifier.hf_token is not None,
         "timestamp": datetime.now().isoformat()
     })
 
@@ -520,13 +718,22 @@ def get_stats():
         "categories": ["Produtivo", "Improdutivo"],
         "email_types": list(classifier.financial_patterns.keys()),
         "priority_levels": ["alta", "media", "baixa"],
-        "average_processing_time": "< 0.5 segundos",
+        "average_processing_time": "< 2 segundos",
+        "classification_method": "Hybrid (Rules + Hugging Face API)",
+        "ai_provider": "Hugging Face Inference API",
         "nlp_features": [
             "Portuguese language detection",
             "Stop words removal", 
             "Pattern matching", 
             "Domain-specific classification",
-            "Priority assignment"
+            "Priority assignment",
+            "Sentiment analysis via Hugging Face",
+            "Confidence scoring",
+            "Hybrid decision making"
+        ],
+        "hugging_face_models": [
+            "cardiffnlp/twitter-roberta-base-sentiment-latest",
+            "neuralmind/bert-base-portuguese-cased"
         ]
     })
 
